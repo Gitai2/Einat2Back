@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "SQL_SERVER": "gitaiserver.database.windows.net",
+    "SQL_USER": "gitaiadmin",
+    "SQL_PASSWORD": "@WSX3edc4rfv",
+    "SQL_DATABASE": "MyFreeDB"
+  }
+}
+
