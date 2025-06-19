@@ -6,8 +6,9 @@ __pycache__/
 local.settings.json
 
 # VS Code
-.vscode/
 
 # Virtual environment
 .venv/
 env/
+
+.python_packages

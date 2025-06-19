@@ -17,6 +17,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         decoded_csv = base64.b64decode(base64_csv).decode('utf-8')
         reader = csv.DictReader(StringIO(decoded_csv))
 
+        # 🔍 Debug: show field names from header row
+        logging.warning(f"📄 HEADERS: {reader.fieldnames}")
+
         # SQL connection details from environment
         conn = pymssql.connect(
             server=os.environ["SQL_SERVER"],
@@ -30,7 +33,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         processed_emails = set()
 
         for row in reader:
-            email = row.get("Einat2Email")
+            logging.warning(f"🔍 ROW: {row}")
+            email = row.get("Einat2Email") or row.get("\ufeffEinat2Email")
+
             grade = row.get("Einat2Grade")
             sentence = row.get("Einat2Sentence")
 
