@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# Azure local settings
+local.settings.json
+
+# VS Code
+.vscode/
+
+# Virtual environment
+.venv/
+env/
