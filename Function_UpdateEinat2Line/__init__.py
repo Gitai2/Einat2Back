@@ -1,23 +1,37 @@
+# Function_ProcessEinat2File/__init__.py
 import logging
 import azure.functions as func
 import pymssql
 import os
-import json
+import csv
+from azure.storage.blob import BlobServiceClient
+from io import StringIO
+
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.warning("🛠️ Update function triggered")
+    logging.warning("📦 Einat2 CSV Function triggered")
 
     try:
-        body = req.get_json()
+        req_body = req.get_json()
+        blob_name = req_body.get("blobName")
+        if not blob_name:
+            return func.HttpResponse("Missing 'blobName' in body", status_code=400)
 
-        row_id = body.get("RowID")
-        new_grade = body.get("NewGrade")
-        new_sentence = body.get("NewSentence")
+        logging.info(f"📁 Blob to load: {blob_name}")
 
-        if not all([row_id, new_grade, new_sentence]):
-            return func.HttpResponse("Missing required field", status_code=400)
+        # Connect to Blob
+        blob_service_client = BlobServiceClient.from_connection_string(os.environ["AzureWebJobsStorage"])
+        container_client = blob_service_client.get_container_client("einat2uploads")
+        blob_client = container_client.get_blob_client(blob_name)
+        blob_data = blob_client.download_blob().readall().decode("utf-8")
 
-        # SQL connection
+        # Parse CSV
+        reader = csv.DictReader(StringIO(blob_data))
+        records = list(reader)
+
+        logging.info(f"📄 Parsed {len(records)} rows")
+
+        # Connect to SQL
         conn = pymssql.connect(
             server=os.environ["SQL_SERVER"],
             user=os.environ["SQL_USER"],
@@ -26,25 +40,37 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         )
         cursor = conn.cursor()
 
-        # Update row
-        cursor.execute(
-            "UPDATE Einat2Raw SET Einat2Grade=%s, Einat2Sentence=%s WHERE ID=%s",
-            (new_grade, new_sentence, row_id)
-        )
+        emails = set()
 
-        # Get email for updated row
-        cursor.execute("SELECT Einat2Email FROM Einat2Raw WHERE ID=%s", (row_id,))
-        result = cursor.fetchone()
-        if not result:
-            return func.HttpResponse("Row not found", status_code=404)
+        for row in records:
+            email = row.get("Einat2Email")
+            grade = row.get("Einat2Grade")
+            sentence = row.get("Einat2Sentence")
 
-        email = result[0]
-        cursor.callproc("sp_UpdateEinat2Totals", (email,))
+            if not all([email, grade, sentence]):
+                logging.warning(f"⚠️ Skipping incomplete row: {row}")
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO Einat2Raw (Einat2Email, Einat2Grade, Einat2Sentence)
+                VALUES (%s, %s, %s)
+                """,
+                (email, grade, sentence)
+            )
+            emails.add(email)
+
+        for email in emails:
+            try:
+                cursor.callproc("sp_UpdateEinat2Totals", (email,))
+                logging.info(f"🔁 Totals refreshed for {email}")
+            except Exception as sp_err:
+                logging.error(f"❌ Failed totals update for {email}: {sp_err}")
 
         conn.commit()
         conn.close()
 
-        return func.HttpResponse("✅ Row updated and totals refreshed", status_code=200)
+        return func.HttpResponse("✅ CSV processed and totals updated", status_code=200)
 
     except Exception as e:
         logging.error(f"❌ Error: {str(e)}")
